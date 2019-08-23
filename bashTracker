@@ -1,0 +1,199 @@
+#!/bin/bash
+
+function tempID(){
+        s=$(echo $(($RANDOM * $RANDOM % 100000)) | tr '[0-9]' '[a-j]')
+        if [ ! -f jarTempID ]
+        then
+                touch jarTempID
+        fi
+        while [ ! -z $(grep $s jarTempID) ]
+        do
+                echo $s >> jarTempID
+                s=$(echo $(($RANDOM * $RANDOM % 10000)) | tr '[0-9]' '[a-j]')
+        done
+        echo $s >> jarTempID
+        echo $s
+}
+
+function textAll() {
+        for m in $mlist
+        do
+                curl -X POST https://api.twilio.com/2010-04-01/Accounts/ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX/Messages.json --data-urlencode "Body=$textMsg" --data-urlencode "From=$twilioNumber" --data-urlencode "To=$m" -u ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX:b8XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+        unset reply
+        done
+}
+
+function textBack() {
+
+                curl -X POST https://api.twilio.com/2010-04-01/Accounts/ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX/Messages.json --data-urlencode "Body=$textMsg" --data-urlencode "From=$twilioNumber" --data-urlencode "To=$z" -u ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXbe:b8XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+}
+
+mlist="+1234567890
++1234567890"
+declare -A buff
+buff=(["+1234567890"]="0" ["+1234567890"]="0")
+#+13522936703
+#+16035470125
+#+13049323334
+twilioNumber="+1234567890"
+list=$mlist
+
+detailCurrentCount=0
+detailCountReq=2
+detailName="Flag"
+detailDate="Fri Jul 26 1730 UTC 2019"
+detailLocation="Parade Field"
+detailTempID=`tempID`
+
+newDetailMessage="Detail: $detailName
+Date: $detailDate
+Location: $detailLocation
+Notes: This is a Test Detail
+
+To accept reply:
+yes $detailTempID
+
+To deny reply:
+no $detailTempID"
+textMsg=$newDetailMessage
+textAll
+: '
+        for m in $mlist
+        do
+                curl -X POST https://api.twilio.com/2010-04-01/Accounts/ACXXXXXXXXXXXXXXXXXXXXXXXX/Messages.json --data-urlencode "Body=$newDetailMessage" --data-urlencode "From=$twilioNumber" --data-urlencode "To=$m" -u ACxxxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxx
+        done
+'
+
+while (($detailCurrentCount != $detailCountReq))
+do
+        sleep 0.5
+        for z in $list
+        do
+
+                lastReply=$(curl -s -X GET 'https://api.twilio.com/2010-04-01/Accounts/ACXXXXXXXXXXXXXXXXXXXXXXXX/Messages.json' -u ACxxxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxx \
+                | sed -e 's/body/\nbody/g' \
+                | grep "\"from\": \"$z\"" \
+                | grep $detailTempID \
+                | sed -e 's/,/\n\t/g' \
+                | awk '/direction/ || /from/ || /to/ || /body/ || /0000/' \
+                | tr -d '\"' \
+                | tr ":" "," \
+                | grep body \
+                | sed -e 's/body\, //g' \
+                | cut -d" " -f1 \
+                | head -n 1 )
+
+                replyCount=$(curl -s -X GET 'https://api.twilio.com/2010-04-01/Accounts/ACXXXXXXXXXXXXXXXXXXXXXXXX/Messages.json' -u ACxxxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxx \
+                | sed -e 's/body/\nbody/g' \
+                | grep "\"from\": \"$z\"" \
+                | grep $detailTempID \
+                | wc -l )
+
+
+                echo RECIEVED MESSAGES: ${buff[$z]}
+                if (( $replyCount > ${buff[$z]} ))
+                then
+                        reply=$lastReply
+                        buff[$z]=$replyCount
+                else
+                        reply=""
+                fi
+
+                echo $(date)
+                echo $reply
+                if [[ "$reply" =~ ^([yY][eE][sS]|[yY]) ]] # && [[ ! -z $(echo $z | grep "$(echo $list | tr " " "\n")") ]]
+                then
+                        if [ ! -z $(echo $acceptedList | tr " " "\n" | grep $z) ]
+                        then
+                                acceptedMsg="Detail Name: $detailName
+Detail: $detailTempID
+You are already on this detail!"
+                        textMsg=$acceptedMsg
+                        textBack
+                        else
+                                ((detailCurrentCount++))
+                                echo $detailCurrentCount
+                                #list=$(echo $list | tr " " "\n" | grep -v "$z")
+                                acceptedList="$z, $acceptedList"
+
+                                acceptedMsg="Detail: $detailName
+$z has accepted the detail: $detailTempID
+Slots: [$detailCurrentCount/$detailCountReq] remaining."
+                        textMsg=$acceptedMsg
+                        textAll
+                        fi
+                        : '
+                        for m in $mlist
+                        do
+                                curl -X POST https://api.twilio.com/2010-04-01/Accounts/ACXXXXXXXXXXXXXXXXXXXXXXXX/Messages.json --data-urlencode "Body=$acceptedMsg" --data-urlencode "From=$twilioNumber" --data-urlencode "To=$m" -u ACxxxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxx
+                        unset reply
+                        done
+                        '
+                elif [[ "$reply" =~ ^([nN][oO]|[nN]) ]]
+                then
+                        if [ ! -z $(echo $acceptedList | tr " " "\n" | grep $z) ]
+                        then
+                                echo REMOVE
+                                ((detailCurrentCount--))
+                                acceptedList=$(echo $acceptedList | tr " " "\n" | grep -v "$z")
+                                denyMsg="Detail: $detailName
+                                $z has been removed from the detail $detailTempID
+                                Slots: [$detailCurrentCount/$detailCountReq] remaining."
+                        fi
+                        echo $detailCurrentCount
+                        #list=$(echo $list | tr " " "\n" | grep -v "$z")
+                        denyList="$z, $acceptedList"
+
+                        denyMsg="Detail: $detailName
+$z has denied the detail: $detailTempID
+Slots: [$detailCurrentCount/$detailCountReq] remaining."
+                        textMsg=$denyMsg
+                        textAll
+                        : '
+                        for m in $mlist
+                        do
+                                curl -X POST https://api.twilio.com/2010-04-01/Accounts/ACXXXXXXXXXXXXXXXXXXXXXXXX/Messages.json --data-urlencode "Body=$denyMsg" --data-urlencode "From=$twilioNumber" --data-urlencode "To=$m" -u ACxxxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxx
+                        unset reply
+                        done
+                        '
+                fi
+                echo $reply
+: '
+                then
+                        echo DENY
+                        denyMsg="Detail: $detailName
+$z has denied the detail
+Slots: [$detailCurrentCount/$detailCountReq] remaining."
+
+                        if [ ! -z $(echo $acceptedList | tr " " "\n" | grep $z) ]
+                        then
+                                echo REMOVE
+                                ((detailCurrentCount--))
+                                denyMsg="Detail: $detailName
+                                $z has been removed from the detail $detailTempID
+                                Slots: [$detailCurrentCount/$detailCountReq] remaining."
+                        fi
+
+                        for m in $mlist
+                        do
+                                curl -X POST https://api.twilio.com/2010-04-01/Accounts/ACXXXXXXXXXXXXXXXXXXXXXXXX/Messages.json --data-urlencode "Body=$denyMsg" --data-urlencode "From=$twilioNumber" --data-urlencode "To=$m" -u ACxxxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxx
+                        done
+                        list=$(echo $list | tr " " "\n" | grep -v "$z")
+                        unset reply
+
+                fi
+'
+                unset reply
+
+        done
+done
+
+
+endDetailMessage="Detail: $detailName
+Has all slots filled by:
+$acceptedList"
+
+        for e in $mlist
+        do
+                curl -X POST https://api.twilio.com/2010-04-01/Accounts/ACXXXXXXXXXXXXXXXXXXXXXXXX/Messages.json --data-urlencode "Body=$endDetailMessage" --data-urlencode "From=$twilioNumber" --data-urlencode "To=$e" -u ACxxxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxx
+        done
